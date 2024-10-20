@@ -72,6 +72,7 @@ export function calculateTax2020_21(totalincome: number) {
   let surcharge10 = 0;
   let surcharge15 = 0;
   let totalTax = 0;
+  const slab = 250000;
 
   // If total income is less than 250000, no tax to be paid
   while (income > 250000) {
@@ -79,60 +80,72 @@ export function calculateTax2020_21(totalincome: number) {
     income = totalincome - 250000;
 
     // 5% slab
-    if (income >= 250000) {
+    if (totalincome >= 250000 && income > 250000) {
       tax += 250000 * (5 / 100);
-      income = totalincome - 500000; // Adjust income for next slab
+      income = income - slab;
+      console.log(`5% tax on Rs. ${250000}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     } else if (income > 0) {
-      tax += income * (5 / 100); // Apply 5% tax on remaining income
-      break;
+      tax += income * (5 / 100);
+      income = income - slab;
+      console.log(`5% tax on Rs. ${income}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     }
 
     // 10% slab
-    if (income >= 500000) {
+    if (totalincome >= 500000 && income > 250000) {
       tax += 250000 * (10 / 100);
-      income = totalincome - 750000; // Adjust income for next slab
+      income = income - slab;
+      console.log(`10% tax on Rs. ${250000}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     } else if (income > 0) {
       tax += income * (10 / 100);
-      break;
+      income = income - slab;
+      console.log(`10% tax on Rs. ${income}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     }
 
     // 15% slab
-    if (income >= 750000) {
+    if (totalincome >= 750000 && income > 250000) {
       tax += 250000 * (15 / 100);
-      income = totalincome - 1000000; // Adjust income for next slab
+      income = income - slab;
+      console.log(`15% tax on Rs. ${250000}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     } else if (income > 0) {
       tax += income * (15 / 100);
-      break;
+      income = income - slab;
+      console.log(`15% tax on Rs. ${income}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     }
 
     // 20% slab
-    if (income >= 1000000) {
+    if (totalincome >= 1000000 && income > 250000) {
       tax += 250000 * (20 / 100);
-      income = totalincome - 1250000; // Adjust income for next slab
+      income = income - slab;
+      console.log(`20% tax on Rs. ${250000}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     } else if (income > 0) {
       tax += income * (20 / 100);
-      break;
+      income = income - slab;
+      console.log(`20% tax on Rs. ${income}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     }
 
     // 25% slab
-    if (income >= 1250000) {
+    if (totalincome >= 1250000 && income > 250000) {
       tax += 250000 * (25 / 100);
-      income = totalincome - 1500000; // Adjust income for next slab
+      income = income - slab;
+      console.log(`25% tax on Rs. ${250000}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     } else if (income > 0) {
       tax += income * (25 / 100);
-      break;
+      income = income - slab;
+      console.log(`25% tax on Rs. ${income}, Remaining Rs. ${income}, Total Tax Rs. ${tax}`);
     }
 
     // 30% slab
     if (totalincome >= 1500000) {
       income = totalincome - 1500000;
       tax += income * (30 / 100);
+      console.log(`30% tax on Rs. ${income}, Total Tax Rs. ${tax}`);
     }
 
     // 10% surcharge
     if (totalincome > 5000000 && totalincome <= 10000000) {
       surcharge10 = tax * (10 / 100);
       tax += surcharge10;
+      console.log(`10% surcharge on Rs. ${tax}, Total Tax Rs. ${tax}`);
       break;
     }
 
@@ -141,24 +154,23 @@ export function calculateTax2020_21(totalincome: number) {
       income = totalincome - 10000000;
       surcharge15 = tax * (15 / 100);
       tax += surcharge15;
+      console.log(`15% surcharge on Rs. ${tax}, Total Tax Rs. ${tax}`);
       break;
     }
 
     break;
   }
 
-  // Health and Education Cess (HES)
   const hes_tax = 4;
-  const hes = tax * (hes_tax / 100); // Apply 4% HES on total tax
-
-  totalTax = tax + hes; // Total tax including HES
+  const hes = tax * (hes_tax / 100); // HES Health And Education Cess
+  totalTax = hes + tax;
 
   return {
-    tax: tax || 0,
-    hes: hes || 0,
-    surcharge10: surcharge10 || 0,
-    surcharge15: surcharge15 || 0,
-    totalTax: totalTax || 0,
+    tax,
+    hes,
+    surcharge10,
+    surcharge15,
+    totalTax,
   };
 }
 
