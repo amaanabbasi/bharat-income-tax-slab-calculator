@@ -93,10 +93,10 @@ export default function Home() {
     <ul className="mt-2 text-gray-700">
       <li>₹2,50,000 - ₹5,00,000 :- 5%</li>
       <li>₹5,00,000 - ₹10,00,000 :- 20%</li>
-      <li>₹10,00,000 > :- 30%</li>
+      <li>₹10,00,000 {'>'} :- 30%</li>
       <li>Health & Education Cess : 4%</li>
       <li>₹50,00,000 - ₹1,00,00,000:- Surcharge of 10%</li>
-      <li>₹1,00,00,000 > :- Surcharge of 15%</li>
+      <li>₹1,00,00,000 {'>'} :- Surcharge of 15%</li>
     </ul>
   </div>
 
@@ -109,10 +109,10 @@ export default function Home() {
       <li>₹7,50,000 - ₹10,00,000 :- 15%</li>
       <li>₹10,00,000 - ₹12,50,000 :- 20%</li>
       <li>₹12,50,000 - ₹15,00,000 :- 25%</li>
-      <li>₹15,00,000 > :- 30%</li>
+      <li>₹15,00,000 {'>'} :- 30%</li>
       <li>Health & Education Cess : 4%</li>
       <li>₹50,00,000 - ₹1,00,00,000:- Surcharge of 10%</li>
-      <li>₹1,00,00,000 > :- Surcharge of 15%</li>
+      <li>₹1,00,00,000 {'>'} :- Surcharge of 15%</li>
     </ul>
   </div>
 
@@ -124,10 +124,10 @@ export default function Home() {
       <li>₹7,00,000 - ₹10,00,000 :- 10%</li>
       <li>₹10,00,000 - ₹12,00,000 :- 15%</li>
       <li>₹12,00,000 - ₹15,00,000 :- 20%</li>
-      <li>₹15,00,000 > :- 30%</li>
+      <li>₹15,00,000 {'>'} :- 30%</li>
       <li>Health & Education Cess : 4%</li>
       <li>₹50,00,000 - ₹1,00,00,000:- Surcharge of 10%</li>
-      <li>₹1,00,00,000 > :- Surcharge of 15%</li>
+      <li>₹1,00,00,000 {'>'} :- Surcharge of 15%</li>
     </ul>
   </div>
 </div>
