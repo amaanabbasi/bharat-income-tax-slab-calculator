@@ -1,3 +1,7 @@
+#BharatIncomeTaxSlabCalculator
+![Screenshot from 2024-10-21 00-18-58](https://github.com/user-attachments/assets/82f78b0b-e6d0-47e9-878e-aad94eccf117)
+
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
