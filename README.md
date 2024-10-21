@@ -1,4 +1,4 @@
-#BharatIncomeTaxSlabCalculator
+# BharatIncomeTaxSlabCalculator
 ![Screenshot from 2024-10-21 00-18-58](https://github.com/user-attachments/assets/82f78b0b-e6d0-47e9-878e-aad94eccf117)
 
 
