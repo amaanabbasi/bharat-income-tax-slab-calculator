@@ -25,8 +25,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-0CDJ4MRTK9"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -34,7 +32,7 @@ export default function RootLayout({
   gtag('js', new Date());
 
   gtag('config', 'G-0CDJ4MRTK9');
-</script><head/>
+</script>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
