@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { useEffect } from "react";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -23,6 +24,21 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://www.googletagmanager.com/gtag/js?id=G-0CDJ4MRTK9";
+    script.async = true;
+    document.head.appendChild(script);
+
+    const scriptText = document.createElement("script");
+    scriptText.innerHTML = `
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-0CDJ4MRTK9');
+    `;
+    document.head.appendChild(scriptText);
+  }, []);
   return (
     <html lang="en">
       <body
