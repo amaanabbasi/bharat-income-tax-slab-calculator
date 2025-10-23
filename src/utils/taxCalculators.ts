@@ -255,3 +255,92 @@ export function calculateTax2024_25(totalincome: number) {
     totalTax
   };
 }
+
+export function calculateTax2025_26(totalincome: number) {
+  let income = totalincome;
+  let tax = 0;
+  let surcharge10 = 0;
+  let surcharge15 = 0;
+  let totalTax = 0;
+
+  // No tax on the first 4,00,000
+  if (income <= 400000) {
+    console.log("No tax!");
+    return { tax, hes: 0, surcharge10: 0, surcharge15: 0, totalTax: 0 };
+  }
+
+  income -= 400000; // Adjust after 4,00,000 slab
+
+  // 5% slab (4,00,001 - 8,00,000)
+  if (totalincome > 400000 && income > 0) {
+    const slab_income = Math.min(400000, income);
+    tax += slab_income * 0.05;
+    income -= slab_income;
+    console.log(`5% tax on Rs. ${slab_income}, Total Tax Rs. ${tax}`);
+  }
+
+  // 10% slab (8,00,001 - 12,00,000)
+  if (totalincome > 800000 && income > 0) {
+    const slab_income = Math.min(400000, income);
+    tax += slab_income * 0.10;
+    income -= slab_income;
+    console.log(`10% tax on Rs. ${slab_income}, Total Tax Rs. ${tax}`);
+  }
+
+  // 15% slab (12,00,001 - 16,00,000)
+  if (totalincome > 1200000 && income > 0) {
+    const slab_income = Math.min(400000, income);
+    tax += slab_income * 0.15;
+    income -= slab_income;
+    console.log(`15% tax on Rs. ${slab_income}, Total Tax Rs. ${tax}`);
+  }
+
+  // 20% slab (16,00,001 - 20,00,000)
+  if (totalincome > 1600000 && income > 0) {
+    const slab_income = Math.min(400000, income);
+    tax += slab_income * 0.20;
+    income -= slab_income;
+    console.log(`20% tax on Rs. ${slab_income}, Total Tax Rs. ${tax}`);
+  }
+
+  // 25% slab (20,00,001 - 24,00,000)
+  if (totalincome > 2000000 && income > 0) {
+    const slab_income = Math.min(400000, income);
+    tax += slab_income * 0.25;
+    income -= slab_income;
+    console.log(`25% tax on Rs. ${slab_income}, Total Tax Rs. ${tax}`);
+  }
+
+  // 30% slab (Above 24,00,000)
+  if (totalincome > 2400000 && income > 0) {
+    const slab_income = income; // Remaining income above 24,00,000
+    tax += slab_income * 0.30;
+    console.log(`30% tax on Rs. ${slab_income}, Total Tax Rs. ${tax}`);
+  }
+
+  // 10% surcharge
+  if (totalincome > 5000000 && totalincome <= 10000000) {
+    surcharge10 = tax * 0.10;
+    tax += surcharge10;
+    console.log(`10% surcharge on Rs. ${tax}, Total Tax Rs. ${tax}`);
+  }
+
+  // 15% surcharge
+  if (totalincome > 10000000) {
+    surcharge15 = tax * 0.15;
+    tax += surcharge15;
+    console.log(`15% surcharge on Rs. ${tax}, Total Tax Rs. ${tax}`);
+  }
+
+  const hes_tax = 4; // Health and Education Cess
+  const hes = tax * (hes_tax / 100); // HES Health And Education Cess
+  totalTax = hes + tax;
+
+  return {
+    tax,
+    hes,
+    surcharge10,
+    surcharge15,
+    totalTax
+  };
+}
