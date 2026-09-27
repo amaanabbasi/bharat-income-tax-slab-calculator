@@ -344,3 +344,8 @@ export function calculateTax2025_26(totalincome: number) {
     totalTax
   };
 }
+
+// FY 2026-27: tax rates are unchanged from FY 2025-26, so the same calculation applies
+export function calculateTax2026_27(totalincome: number) {
+  return calculateTax2025_26(totalincome);
+}
