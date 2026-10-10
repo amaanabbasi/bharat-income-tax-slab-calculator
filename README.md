@@ -3,6 +3,16 @@
 ![Screenshot from 2024-10-21 00-18-58](https://github.com/user-attachments/assets/82f78b0b-e6d0-47e9-878e-aad94eccf117)
 
 
+## Salary & Tax Desk ([/payroll](https://income-tax.amaanabbasi.me/payroll))
+
+Upload an office "Statement of Salary" workbook and get monthly pay slips and the full income-tax computation (slabs, 87A rebate and marginal relief, surcharge and its marginal relief, 4% cess, 288A/288B rounding, TDS balance), with both regimes compared. Files are read in the browser; nothing is uploaded and no AI is involved.
+
+- `src/payroll/format/salaryStatement.ts`: the statement layout and its 17 columns, with the formulas each one uses.
+- `src/payroll/rules/taxRules.ts`: slabs and limits for FY 2024-25, 2025-26 and tax year 2026-27.
+- `src/payroll/engine/`: annual totals, the tax computation and pay slips.
+- `src/payroll/excel/`: reading and checking uploaded workbooks (with cell-by-cell messages), and writing the statement, tax sheet and template back to Excel.
+- `npm test` runs the unit tests.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

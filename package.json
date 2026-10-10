@@ -6,14 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@next/third-parties": "latest",
+    "exceljs": "^4.4.0",
     "framer-motion": "^6.5.1",
     "next": "14.2.15",
     "react": "^18",
-    "react-dom": "^18",
-    "@next/third-parties": "latest"
+    "react-dom": "^18"
   },
   "devDependencies": {
     "@types/node": "^20",
@@ -23,6 +25,7 @@
     "eslint-config-next": "14.2.15",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

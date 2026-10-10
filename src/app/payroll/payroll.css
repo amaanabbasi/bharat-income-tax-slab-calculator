@@ -1,0 +1,140 @@
+/* Salary & Tax Desk: the portfolio's tangerine + navy palette on cool neutrals.
+   Values are RGB channels so Tailwind can apply alpha. */
+.tax-desk {
+  --bg: 247 248 250;
+  --surface: 255 255 255;
+  --surface-2: 238 241 245;
+  --line: 225 229 236;
+  --ink: 15 27 45;
+  --muted: 91 102 118;
+  --accent: 255 122 26;
+  --accent-ink: 15 27 45;
+  --accent-text: 194 65 12;
+  --accent-bright: 255 122 26;
+  --glow-cool: 99 125 255;
+  --good: 21 128 61;
+  --warn: 180 83 9;
+  --bad: 185 28 28;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-desk-theme='light']) .tax-desk {
+    --bg: 11 17 32;
+    --surface: 19 26 41;
+    --surface-2: 28 36 54;
+    --line: 40 50 71;
+    --ink: 232 236 243;
+    --muted: 149 160 179;
+    --accent-ink: 11 17 32;
+    --accent-text: 255 154 77;
+    --accent-bright: 255 138 51;
+    --good: 74 222 128;
+    --warn: 251 191 36;
+    --bad: 248 113 113;
+    color-scheme: dark;
+  }
+}
+
+html[data-desk-theme='dark'] .tax-desk {
+  --bg: 11 17 32;
+  --surface: 19 26 41;
+  --surface-2: 28 36 54;
+  --line: 40 50 71;
+  --ink: 232 236 243;
+  --muted: 149 160 179;
+  --accent-ink: 11 17 32;
+  --accent-text: 255 154 77;
+  --accent-bright: 255 138 51;
+  --good: 74 222 128;
+  --warn: 251 191 36;
+  --bad: 248 113 113;
+  color-scheme: dark;
+}
+
+.tax-desk ::selection {
+  background: rgb(var(--accent-bright) / 0.25);
+}
+
+.tax-desk :focus-visible {
+  outline: 2px solid rgb(var(--accent-bright));
+  outline-offset: 2px;
+}
+
+.tax-desk .tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Reading the file…" label with a light sweep. */
+.tax-desk .text-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--muted)) 0%,
+    rgb(var(--muted)) 40%,
+    rgb(var(--ink)) 50%,
+    rgb(var(--muted)) 60%,
+    rgb(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tax-desk *,
+  .tax-desk *::before,
+  .tax-desk *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Printing: only the document being printed, black on white, one slip per page. */
+.desk-print {
+  display: none;
+}
+
+@media print {
+  body > *:not(.tax-desk),
+  .tax-desk .desk-screen {
+    display: none !important;
+  }
+
+  .tax-desk {
+    min-height: 0 !important;
+    background: #fff !important;
+  }
+
+  .desk-print {
+    display: block !important;
+    --bg: 255 255 255;
+    --surface: 255 255 255;
+    --surface-2: 244 244 245;
+    --line: 200 200 205;
+    --ink: 0 0 0;
+    --muted: 70 70 76;
+    --accent-text: 0 0 0;
+    --good: 0 0 0;
+    --warn: 0 0 0;
+    --bad: 0 0 0;
+    color-scheme: light;
+  }
+
+  .desk-print .print-page + .print-page {
+    break-before: page;
+  }
+
+  .desk-print .paper {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}
