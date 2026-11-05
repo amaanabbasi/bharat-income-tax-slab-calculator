@@ -16,6 +16,8 @@ function salary(overrides: Partial<SalaryFigures>): SalaryFigures {
     employeeNps: 0,
     cghs: 0,
     gis: 0,
+    gpf: 0,
+    lic: 0,
     ...overrides,
   };
 }

@@ -6,7 +6,7 @@ import { importFile } from './importFile';
 import { guessColumn, parseMonth, parseStatementSheet } from './parseStatement';
 import { DEFAULT_DECLARATIONS } from '../engine/declarations';
 import { buildSlip } from '../engine/slip';
-import { computeStatementTax } from '../engine/statementTax';
+import { computeStatementTax, salaryFigures } from '../engine/statementTax';
 import { PAY_KEYS } from '../format/salaryStatement';
 import { sampleStatement } from '../sample';
 
@@ -52,7 +52,10 @@ function statementGrid(change: { headings?: string[], edit?: (rows: CellValue[][
   return { name: 'Sheet1', hidden: false, rows: rows.map(row => row.map((value): GridCell => ({ value }))) };
 }
 
-const parse = (grid: SheetGrid) => parseStatementSheet(grid, { id: 't', fileName: 'test.xlsx' });
+const parse = (grid: SheetGrid) => {
+  const result = parseStatementSheet(grid, { id: 't', fileName: 'test.xlsx' });
+  return { ...result, statement: result.statements[0] ?? null };
+};
 const messages = (result: { issues: { severity: string, message: string }[] }, severity: string) =>
   result.issues.filter(issue => issue.severity === severity).map(issue => issue.message);
 
@@ -212,6 +215,97 @@ describe('files', () => {
     expect(find('Tax payable rounded off u/s 288B')).toBe(tax.chosen.taxPayable);
     expect(find('Total taxable income rounded off u/s 288A')).toBe(tax.chosen.taxableIncome);
     expect(find('Balance tax to be recovered')).toBe(tax.chosen.balance);
+  });
+});
+
+/** A second employee in the same sheet, one column to the right, with UA, WA, GPF and LIC columns. */
+function gpfBlock(): CellValue[][] {
+  const headings = ['Month', 'Pay Band', 'DA', 'HRA', 'TPT', 'Da on TA', 'UA', 'WA', 'Others', 'GROSS PAY', 'I.T. Ded.', 'CGHS', 'GIS', 'GPF', 'LIC'];
+  const months: CellValue[][] = Array.from({ length: 12 }, (_, index) => {
+    const offset = index + 2;
+    const date = new Date(Date.UTC(2025 + Math.floor(offset / 12), offset % 12, 1));
+    const ua = index === 6 ? 20000 : 0;
+    return [date, 40000, 22000, 8000, 3600, 1980, ua, 450, 0, 40000 + 22000 + 8000 + 3600 + 1980 + ua + 450, 1000, 450, 60, 5000, 800];
+  });
+  const zeroRow: CellValue[] = [null, 0, 0, null, null, null, null, null, null, 0];
+  const totals: CellValue[] = ['TOTAL', ...headings.slice(1).map((_, column) => months.reduce((sum, row) => sum + Number(row[column + 1] ?? 0), 0))];
+  const rows: CellValue[][] = [
+    [null, null, null, null, null, 'Statement of Salary for the year 2025-26'],
+    [],
+    ['Name of employee:  Second Person', null, null, null, null, null, null, null, null, 'Designation:  Assistant'],
+    [],
+    headings,
+    ...months,
+    zeroRow,
+    totals,
+    [],
+    [null, 'Dealing Hand', null, null, null, null, null, 'Checked by'],
+    [],
+  ];
+  return rows.map(row => [null, ...row]);
+}
+
+function twoEmployeeGrid(): SheetGrid {
+  const first = statementGrid().rows.map(row => row.map(cell => cell.value));
+  const rows = [...first, [], ...gpfBlock()];
+  return { name: 'Sheet1', hidden: false, rows: rows.map(row => row.map((value): GridCell => ({ value }))) };
+}
+
+describe('several employees in one sheet', () => {
+  it('reads each block with its own name, columns and rows', () => {
+    const result = parseStatementSheet(twoEmployeeGrid(), { id: 't', fileName: 'test.xlsx' });
+    expect(messages(result, 'error')).toEqual([]);
+    expect(messages(result, 'warning')).toEqual([]);
+    expect(result.statements.map(statement => statement.employeeName)).toEqual(['Test Person', 'Second Person']);
+    expect(new Set(result.statements.map(statement => statement.id)).size).toBe(2);
+    const [first, second] = result.statements;
+    expect(first).toMatchObject({ designation: 'Scientist C', financialYear: '2025-26' });
+    expect(first.rows).toHaveLength(13);
+    expect(second).toMatchObject({ designation: 'Assistant', financialYear: '2025-26' });
+    // The unlabelled row of zeros is not an arrear.
+    expect(second.rows.map(row => row.kind)).toEqual(Array(12).fill('month'));
+    expect(second.columns).toEqual(expect.arrayContaining(['ua', 'wa', 'gpf', 'lic']));
+    expect(second.rows[6].values).toMatchObject({ ua: 20000, wa: 450, gpf: 5000, lic: 800 });
+    expect(second.signatures).toEqual(['Dealing Hand', 'Checked by']);
+  });
+
+  it('tags each block’s messages with the employee', () => {
+    const grid = twoEmployeeGrid();
+    // A text amount in the second block.
+    const row = grid.rows.findIndex(cells => cells[2]?.value === 40000);
+    grid.rows[row][3] = { value: 'abc' };
+    const result = parseStatementSheet(grid, { id: 't', fileName: 'test.xlsx' });
+    const error = result.issues.find(issue => issue.severity === 'error');
+    expect(error?.employee).toBe('Second Person');
+    expect(error?.message).toContain(`D${row + 1}`);
+    expect(result.statements.map(statement => statement.employeeName)).toEqual(['Test Person']);
+  });
+
+  it('counts GPF and LIC under 80C in the old regime only', () => {
+    const second = parseStatementSheet(twoEmployeeGrid(), { id: 't', fileName: 'test.xlsx' }).statements[1];
+    const tax = computeStatementTax(second, { ...DEFAULT_DECLARATIONS, regime: 'old' });
+    expect(salaryFigures(tax.annual)).toMatchObject({ gpf: 60000, lic: 9600 });
+    expect(tax.annual.totals.gross).toBe(12 * (40000 + 22000 + 8000 + 3600 + 1980 + 450) + 20000);
+    const old = tax.chosen.regime === 'old' ? tax.chosen : tax.alternative;
+    const fresh = tax.chosen.regime === 'new' ? tax.chosen : tax.alternative;
+    expect(JSON.stringify(old)).toContain('GPF subscription from salary');
+    expect(JSON.stringify(fresh)).not.toContain('GPF subscription from salary');
+  });
+
+  it('exports everyone into one workbook with the extra columns', async () => {
+    const statements = parseStatementSheet(twoEmployeeGrid(), { id: 't', fileName: 'test.xlsx' }).statements;
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await buildExportWorkbook(statements.map(statement => exportItem(statement, DEFAULT_DECLARATIONS))));
+    const names = workbook.worksheets.map(sheet => sheet.name);
+    expect(names[0]).toBe('Summary');
+    const summary = workbook.getWorksheet('Summary')!;
+    expect(summary.getCell('A4').value).toBe('Total, 2 employees');
+    expect(summary.getCell('G4').value).toMatchObject({ formula: 'SUM(G2:G3)' });
+    const salary = workbook.worksheets.find(sheet => sheet !== workbook.worksheets[0] && JSON.stringify(sheet.getRow(9).values).includes('"WA"'));
+    expect(salary).toBeDefined();
+    const headers = (salary!.getRow(9).values as unknown[]).slice(1);
+    const gross = salary!.getCell(10, headers.indexOf('GROSS PAY') + 1).value as { formula: string };
+    expect(gross.formula).toMatch(/^SUM\(B10:K10\)\+R10\+S10$/);
   });
 });
 

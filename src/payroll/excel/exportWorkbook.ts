@@ -1,10 +1,11 @@
 import type { Borders, Cell, Fill, Font, Workbook, Worksheet } from 'exceljs';
+import { columnLetter } from './grid';
 import { loadExcel } from './readWorkbook';
 import { DECLARATION_FIELDS, DEFAULT_DECLARATIONS, type Declarations, describeValue } from '../engine/declarations';
 import { formatRupees } from '../engine/money';
 import { type StatementTax, computeStatementTax } from '../engine/statementTax';
 import { slabLabel } from '../engine/tax';
-import { COLUMNS, PAY_KEYS, TEMPLATE_LAYOUT, templateLetter } from '../format/salaryStatement';
+import { COLUMNS, type ColumnKey, type PayKey, TEMPLATE_KEYS, TEMPLATE_LAYOUT } from '../format/salaryStatement';
 import { type SalaryStatement, type StatementRow } from '../model';
 import { sampleStatement } from '../sample';
 
@@ -67,9 +68,9 @@ const HRA_RATES = [0.3, 0.27, 0.24, 0.2, 0.18, 0.16, 0.1, 0.09, 0.08];
 const pct = (rate: number) => `${Math.round(rate * 100)}%`;
 
 /** Formula for a cell of the statement, learned from the row's own numbers (null: keep the typed value). */
-function formulaFor(key: string, row: StatementRow, r: number): string | null {
+function formulaFor(key: PayKey, row: StatementRow, r: number, letter: (key: ColumnKey) => string, keys: ColumnKey[]): string | null {
   const v = row.values;
-  const L = (k: Parameters<typeof templateLetter>[0]) => `${templateLetter(k)}${r}`;
+  const L = (k: ColumnKey) => `${letter(k)}${r}`;
   switch (key) {
     case 'npa':
       return v.npa && matchRate(v.npa, v.basic, [0.2], true) ? `ROUND(${L('basic')}*20%,0)` : null;
@@ -85,8 +86,11 @@ function formulaFor(key: string, row: StatementRow, r: number): string | null {
       const rate = v.daOnTa ? matchRate(v.daOnTa, v.tpt, WHOLE_PERCENTS, false) : null;
       return rate ? `${L('tpt')}*${pct(rate)}` : null;
     }
-    case 'gross':
-      return `SUM(${L('basic')}:${L('others')})`;
+    case 'gross': {
+      // Pay columns beyond the template's (such as UA and WA) sit after it, so they are added on.
+      const extra = keys.filter(k => k === 'ua' || k === 'wa').map(L);
+      return `SUM(${L('basic')}:${L('others')})${extra.map(ref => `+${ref}`).join('')}`;
+    }
     case 'npsEmployee':
       return matchRate(v.npsEmployee, v.basic + v.npa + v.da, [0.1], true) !== null ? `ROUND((${L('basic')}+${L('npa')}+${L('da')})*10%,0)` : null;
     case 'npsGovt':
@@ -99,9 +103,13 @@ function formulaFor(key: string, row: StatementRow, r: number): string | null {
 /** The salary statement in the office layout (headings in row 9, months from row 10, TOTAL and signatures). */
 export function addStatementSheet(workbook: Workbook, statement: SalaryStatement, name: string, rows: StatementRow[] = statement.rows): Worksheet {
   const sheet = workbook.addWorksheet(name, { pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
+  // The office template's 17 columns, then any extra ones this statement has (UA, GPF, LIC…).
+  const keys = COLUMNS.map(column => column.key).filter(key => TEMPLATE_KEYS.includes(key) || statement.columns.includes(key));
+  const payKeys = keys.filter((key): key is PayKey => key !== 'month');
+  const letter = (key: ColumnKey) => columnLetter(keys.indexOf(key));
   const widths = [10, 10, 9, 9, 10, 8, 9, 7, 7, 7, 8, 11, 10, 8, 7, 10, 10];
-  widths.forEach((width, index) => {
-    sheet.getColumn(index + 1).width = width;
+  keys.forEach((_, index) => {
+    sheet.getColumn(index + 1).width = widths[index] ?? 9;
   });
   const put = (ref: string, value: string, font = BOLD) => {
     const cell = sheet.getCell(ref);
@@ -115,9 +123,9 @@ export function addStatementSheet(workbook: Workbook, statement: SalaryStatement
 
   const headerRow = sheet.getRow(TEMPLATE_LAYOUT.headerRow);
   headerRow.height = 25.5;
-  COLUMNS.forEach((column, index) => {
+  keys.forEach((key, index) => {
     const cell = headerRow.getCell(index + 1);
-    cell.value = column.header;
+    cell.value = COLUMNS.find(column => column.key === key)?.header ?? key;
     styleCell(cell, { font: BOLD, border: true, fill: HEADING_FILL, align: index === 0 ? 'left' : 'right', wrap: true });
   });
 
@@ -134,14 +142,14 @@ export function addStatementSheet(workbook: Workbook, statement: SalaryStatement
       monthCell.value = row.label;
       styleCell(monthCell, { font: BOLD, border: true, align: 'left' });
     }
-    PAY_KEYS.forEach((key, index) => {
+    payKeys.forEach((key, index) => {
       const cell = excelRow.getCell(index + 2);
       const value = row.values[key];
       if (key === 'incomeTax' && row.taxPending) {
         styleCell(cell, { border: true, align: 'right' });
         return;
       }
-      const formula = formulaFor(key, row, r);
+      const formula = formulaFor(key, row, r, letter, keys);
       cell.value = formula ? { formula, result: value } : value;
       styleCell(cell, { font: key === 'gross' ? BOLD : FONT, border: true, numFmt: key === 'gross' ? '0' : undefined, align: 'right' });
     });
@@ -151,10 +159,9 @@ export function addStatementSheet(workbook: Workbook, statement: SalaryStatement
   const totalRow = sheet.getRow(last + 2);
   totalRow.getCell(1).value = 'TOTAL';
   styleCell(totalRow.getCell(1), { font: BOLD, border: true, align: 'left' });
-  PAY_KEYS.forEach((key, index) => {
-    const letter = templateLetter(key);
+  payKeys.forEach((key, index) => {
     const cell = totalRow.getCell(index + 2);
-    cell.value = { formula: `SUM(${letter}${first}:${letter}${last + 1})`, result: rows.reduce((sum, row) => sum + row.values[key], 0) };
+    cell.value = { formula: `SUM(${letter(key)}${first}:${letter(key)}${last + 1})`, result: rows.reduce((sum, row) => sum + row.values[key], 0) };
     styleCell(cell, { font: BOLD, border: true, align: 'right' });
   });
 
@@ -304,12 +311,25 @@ function addSummarySheet(workbook: Workbook, items: ExportItem[]): Worksheet {
   });
   items.forEach(({ statement, tax }, index) => {
     const c = tax.chosen;
-    const values = [statement.employeeName, statement.designation, c.fy, c.regime === 'new' ? 'New' : 'Old', tax.annual.totals.gross, c.taxableIncome, c.taxPayable, c.tdsDeducted + c.previousEmployerTds, c.balance, tax.recovery?.perMonth ?? 0, tax.alternative.taxPayable];
+    const values = [statement.employeeName, statement.designation, c.fy, c.regime === 'new' ? 'New' : 'Old', Math.round(tax.annual.totals.gross * 100) / 100, c.taxableIncome, c.taxPayable, c.tdsDeducted + c.previousEmployerTds, c.balance, tax.recovery?.perMonth ?? 0, tax.alternative.taxPayable];
     values.forEach((value, column) => {
       const cell = sheet.getRow(index + 2).getCell(column + 1);
       cell.value = value;
       styleCell(cell, { border: true, numFmt: typeof value === 'number' ? INDIAN_WHOLE : undefined, align: typeof value === 'number' ? 'right' : 'left' });
     });
+  });
+  // Totals under the amounts (Gross salary onwards), as formulas so they follow any edits.
+  const totalRow = sheet.getRow(items.length + 2);
+  headings.forEach((_, column) => {
+    const cell = totalRow.getCell(column + 1);
+    if (column === 0)
+      cell.value = `Total, ${items.length} employees`;
+    else if (column >= 4) {
+      const letter = columnLetter(column);
+      const result = items.reduce((sum, _, index) => sum + Number(sheet.getRow(index + 2).getCell(column + 1).value ?? 0), 0);
+      cell.value = { formula: `SUM(${letter}2:${letter}${items.length + 1})`, result };
+    }
+    styleCell(cell, { font: BOLD, border: true, numFmt: column >= 4 ? INDIAN_WHOLE : undefined, align: column >= 4 ? 'right' : 'left' });
   });
   return sheet;
 }
@@ -320,7 +340,7 @@ function addReadMeSheet(workbook: Workbook): Worksheet {
   sheet.getColumn(2).width = 12;
   sheet.getColumn(3).width = 90;
   const rows: [string, string, string][] = [
-    ['Salary statement format', '', 'One sheet per employee. Keep the headings in one row; months go below them, then arrear rows, then a TOTAL row.'],
+    ['Salary statement format', '', 'One sheet per employee, or several employees one below the other in a sheet. Keep each block\u2019s headings in one row; months go below them, then arrear rows, then a TOTAL row.'],
     ['', '', 'Upload the workbook at income-tax.amaanabbasi.me/payroll. It is read in your browser and never uploaded.'],
     ['Heading', 'Filled by', 'What it holds'],
     ...COLUMNS.map(column => [column.header, column.source === 'formula' ? `formula ${column.formula ? `=${column.formula}` : ''}` : 'typed in', `${column.label}${column.required ? ' (required)' : ''}. ${column.description}`] as [string, string, string]),

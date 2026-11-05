@@ -22,6 +22,9 @@ export interface SalaryFigures {
   employeeNps: number;
   cghs: number;
   gis: number;
+  /** GPF subscription and LIC premium deducted from salary (80C in the old regime). */
+  gpf: number;
+  lic: number;
 }
 
 export interface TaxInput {
@@ -247,7 +250,7 @@ export function computeTax(input: TaxInput): TaxComputation {
 
   if (isOld) {
     const gisIn80C = d.includeGisIn80C ? s.gis : 0;
-    const items80C = gisIn80C + d.investments80C;
+    const items80C = gisIn80C + s.gpf + s.lic + d.investments80C;
     const employeeNpsEligible = Math.min(s.employeeNps, Math.round(salaryBase * 0.1));
     const from80C = Math.min(items80C, limits.section80C);
     const fromNps = Math.min(employeeNpsEligible, limits.section80C - from80C);
@@ -259,6 +262,8 @@ export function computeTax(input: TaxInput): TaxComputation {
         op: 'less',
         detail: [
           ...(gisIn80C ? [{ label: 'Group insurance (GIS) from salary', amount: gisIn80C }] : []),
+          ...(s.gpf ? [{ label: 'GPF subscription from salary', amount: s.gpf }] : []),
+          ...(s.lic ? [{ label: 'LIC premium from salary', amount: s.lic }] : []),
           ...(d.investments80C ? [{ label: 'Investments declared (PPF, LIC, tuition fees…)', amount: d.investments80C }] : []),
           ...(fromNps ? [{ label: 'Employee NPS share, 80CCD(1) (within 10% of salary)', amount: fromNps }] : []),
         ],

@@ -5,7 +5,7 @@
 
 ## Salary & Tax Desk ([/payroll](https://income-tax.amaanabbasi.me/payroll))
 
-Upload an office "Statement of Salary" workbook and get monthly pay slips and the full income-tax computation (slabs, 87A rebate and marginal relief, surcharge and its marginal relief, 4% cess, 288A/288B rounding, TDS balance), with both regimes compared. Files are read in the browser; nothing is uploaded and no AI is involved.
+Upload an office "Statement of Salary" workbook (one employee, one sheet per employee, or many employees stacked in one sheet) and get monthly pay slips and the full income-tax computation (slabs, 87A rebate and marginal relief, surcharge and its marginal relief, 4% cess, 288A/288B rounding, TDS balance), with both regimes compared. A file with many employees gets a summary table, one Excel workbook for everyone, and print-all for tax computations and pay slips. Files are read in the browser; nothing is uploaded and no AI is involved.
 
 - `src/payroll/format/salaryStatement.ts`: the statement layout and its 17 columns, with the formulas each one uses.
 - `src/payroll/rules/taxRules.ts`: slabs and limits for FY 2024-25, 2025-26 and tax year 2026-27.

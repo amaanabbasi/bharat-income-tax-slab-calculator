@@ -27,8 +27,8 @@ export interface PaySlip {
   taxPending: boolean;
 }
 
-const EARNINGS: PayKey[] = ['basic', 'npa', 'hra', 'da', 'tpt', 'daOnTa', 'specialPay', 'na', 'hpca', 'others'];
-const DEDUCTIONS: PayKey[] = ['incomeTax', 'cghs', 'gis', 'npsEmployee'];
+const EARNINGS: PayKey[] = ['basic', 'npa', 'hra', 'da', 'tpt', 'daOnTa', 'specialPay', 'na', 'hpca', 'ua', 'wa', 'others'];
+const DEDUCTIONS: PayKey[] = ['incomeTax', 'cghs', 'gis', 'npsEmployee', 'gpf', 'lic', 'hba', 'recovery'];
 
 function rateOf(part: number, whole: number): string | null {
   if (!part || !whole)

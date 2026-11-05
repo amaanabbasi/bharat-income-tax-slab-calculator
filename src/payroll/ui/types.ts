@@ -24,7 +24,7 @@ export interface LoadedFile {
 export type Action =
   | { kind: 'open', view: PanelView, statementId: string, slipKey?: string, label: string }
   | { kind: 'export', statementIds: string[], label: string }
-  | { kind: 'print', what: 'tax' | 'slips', statementId: string, label: string }
+  | { kind: 'print', what: 'tax' | 'slips', statementIds: string[], label: string }
   | { kind: 'template', label: string }
   | { kind: 'sample', label: string }
   | { kind: 'upload', label: string }
@@ -49,6 +49,7 @@ export type Message =
 
 export interface PrintJob {
   what: 'tax' | 'slips' | 'slip' | 'statement';
-  statementId: string;
+  /** One statement, or every employee's for "print all". */
+  statementIds: string[];
   slipKey?: string;
 }

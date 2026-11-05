@@ -10,6 +10,8 @@ export interface Issue {
   sheet?: string;
   /** A1 reference, e.g. "A18". */
   cell?: string;
+  /** The employee the issue belongs to, when a sheet holds several. */
+  employee?: string;
 }
 
 export type PayValues = Record<PayKey, number>;
@@ -41,6 +43,8 @@ export interface SalaryStatement {
   employeeName: string;
   designation: string;
   rows: StatementRow[];
+  /** Row of the headings in the sheet (1-based); several statements can share a sheet. */
+  headerRow?: number;
   /** Columns found in the file. */
   columns: ColumnKey[];
   signatures: string[];
@@ -66,6 +70,12 @@ export function emptyPayValues(): PayValues {
     gis: 0,
     npsEmployee: 0,
     npsGovt: 0,
+    ua: 0,
+    wa: 0,
+    gpf: 0,
+    lic: 0,
+    hba: 0,
+    recovery: 0,
   };
 }
 

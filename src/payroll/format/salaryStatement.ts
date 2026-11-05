@@ -11,6 +11,9 @@
  *           then arrear rows such as "DA ARR" or "Inc. Arrear"
  *   TOTAL   =SUM of every column, followed by signatures ("Dealing Hand", "Checked by", …)
  *
+ * A sheet can also hold many employees, one block below the other, each with its own name,
+ * headings and TOTAL (blocks may start in a different column). Each block is read on its own.
+ *
  * Reading is forgiving: headings are matched by meaning (with spelling mistakes reported),
  * the rows can start anywhere, and extra sheets in the workbook are skipped.
  */
@@ -31,7 +34,13 @@ export type PayKey =
   | 'cghs'
   | 'gis'
   | 'npsEmployee'
-  | 'npsGovt';
+  | 'npsGovt'
+  | 'ua'
+  | 'wa'
+  | 'gpf'
+  | 'lic'
+  | 'hba'
+  | 'recovery';
 
 export type ColumnKey = 'month' | PayKey;
 
@@ -230,11 +239,75 @@ export const COLUMNS: ColumnSpec[] = [
     formula: 'ROUND((B10+C10+E10)*14%,0)',
     description: 'Government’s NPS contribution: 14% of (basic pay + NPA + DA). Not paid out, but taxable salary.',
   },
+  // Columns some statements add. They go after the office template's 17 columns when written back.
+  {
+    key: 'ua',
+    header: 'UA',
+    aliases: ['U.A.', 'Uniform Allowance', 'Dress Allowance', 'Dress All', 'Dress Allce', 'Dress', 'Uniform'],
+    label: 'Uniform allowance',
+    group: 'earning',
+    required: false,
+    source: 'typed',
+    description: 'Uniform (dress) allowance, taxable as salary.',
+  },
+  {
+    key: 'wa',
+    header: 'WA',
+    aliases: ['W.A.', 'Washing Allowance', 'Washing All', 'Washing Allce', 'Wash All'],
+    label: 'Washing allowance',
+    group: 'earning',
+    required: false,
+    source: 'typed',
+    description: 'Washing allowance, taxable as salary.',
+  },
+  {
+    key: 'gpf',
+    header: 'GPF',
+    aliases: ['G.P.F.', 'G.P.F', 'GPF Subscription', 'General Provident Fund'],
+    label: 'GPF subscription',
+    group: 'deduction',
+    required: false,
+    source: 'typed',
+    description: 'General Provident Fund subscription (old pension scheme). Counts under 80C in the old regime.',
+  },
+  {
+    key: 'lic',
+    header: 'LIC',
+    aliases: ['L.I.C.', 'L.I.C', 'LIC Premium'],
+    label: 'LIC premium',
+    group: 'deduction',
+    required: false,
+    source: 'typed',
+    description: 'Life insurance premium deducted from salary. Counts under 80C in the old regime.',
+  },
+  {
+    key: 'hba',
+    header: 'H.B.A',
+    aliases: ['HBA', 'H.B.A.', 'House Building Advance'],
+    label: 'House building advance (HBA)',
+    group: 'deduction',
+    required: false,
+    source: 'typed',
+    description: 'House building advance recovery.',
+  },
+  {
+    key: 'recovery',
+    header: 'Pay Recovery',
+    aliases: ['Recovery of pay', 'Recovery', 'Pay Rec', 'Excess Pay Recovery', 'Recovery of Excess Pay'],
+    label: 'Pay recovery',
+    group: 'deduction',
+    required: false,
+    source: 'typed',
+    description: 'Recovery of pay paid in excess earlier.',
+  },
 ];
+
+/** The office template's columns, A to Q; the rest are written only when a statement has them. */
+export const TEMPLATE_KEYS: ColumnKey[] = COLUMNS.slice(0, 17).map(c => c.key);
 
 export const PAY_KEYS = COLUMNS.filter(c => c.key !== 'month').map(c => c.key as PayKey);
 export const EARNING_KEYS = COLUMNS.filter(c => c.group === 'earning').map(c => c.key as PayKey);
-export const DEDUCTION_KEYS: PayKey[] = ['incomeTax', 'cghs', 'gis', 'npsEmployee'];
+export const DEDUCTION_KEYS: PayKey[] = ['incomeTax', 'cghs', 'gis', 'npsEmployee', 'gpf', 'lic', 'hba', 'recovery'];
 
 export function columnSpec(key: ColumnKey): ColumnSpec {
   const spec = COLUMNS.find(c => c.key === key);

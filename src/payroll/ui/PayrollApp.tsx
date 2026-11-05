@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { type Intent, parseIntent } from './commands';
 import Composer, { type Suggestion } from './Composer';
 import { SlipCard, StatementTable, TaxDocument } from './documents';
@@ -326,6 +326,15 @@ export default function PayrollApp() {
       default:
         break;
     }
+    if (intent.kind === 'everyone') {
+      if (!order.length)
+        return needsData();
+      if (intent.print) {
+        setPrintJob({ what: intent.print, statementIds: order });
+        return say([{ type: 'text', text: `Opening the print dialog for ${intent.print === 'tax' ? 'the tax computation' : 'the pay slips'} of all ${order.length} ${order.length === 1 ? 'employee' : 'employees'}, each on its own page.` }]);
+      }
+      return say([{ type: 'text', text: `**${order.length} ${order.length === 1 ? 'employee' : 'employees'}** loaded:` }, { type: 'employees', statementIds: order }]);
+    }
     const target = intent.employeeId ?? current;
     if (!target)
       return needsData();
@@ -382,7 +391,7 @@ export default function PayrollApp() {
       case 'export':
         return void exportIds(action.statementIds);
       case 'print':
-        return setPrintJob({ what: action.what, statementId: action.statementId });
+        return setPrintJob({ what: action.what, statementIds: action.statementIds });
       case 'template':
         return void downloadTemplate();
       case 'sample':
@@ -416,6 +425,7 @@ export default function PayrollApp() {
       { text: 'Edit declarations', icon: 'sliders' },
       { text: 'Show the statement', icon: 'table' },
       { text: order.length > 1 ? 'Download everything as Excel' : 'Download Excel', icon: 'download' },
+      ...(order.length > 1 ? [{ text: 'Show all employees', icon: 'users' as const }, { text: 'Print all tax computations', icon: 'printer' as const }] : []),
       { text: 'How is income tax worked out?', icon: 'help' },
     ];
     for (const id of order.filter(other => other !== current).slice(0, 4))
@@ -426,8 +436,7 @@ export default function PayrollApp() {
   const ctx: DeskContext = { files, statements, taxes, run };
   const panelStatement = panel ? statements[panel.statementId] : undefined;
   const panelTax = panel ? taxes[panel.statementId] : undefined;
-  const printStatement = printJob ? statements[printJob.statementId] : undefined;
-  const printTax = printJob ? taxes[printJob.statementId] : undefined;
+  const printIds = printJob ? printJob.statementIds.filter(id => statements[id] && taxes[id]) : [];
 
   const composer = (placement: 'below' | 'above') => (
     <Composer
@@ -552,7 +561,7 @@ export default function PayrollApp() {
                     onDeclarations={next => setDeclarations(previous => ({ ...previous, [panel.statementId]: next }))}
                     onResetDeclarations={() => setDeclarations(previous => ({ ...previous, [panel.statementId]: fromFile[panel.statementId] ?? DEFAULT_DECLARATIONS }))}
                     onExport={() => void exportIds([panel.statementId])}
-                    onPrint={(what, slipKey) => setPrintJob({ what, statementId: panel.statementId, slipKey })}
+                    onPrint={(what, slipKey) => setPrintJob({ what, statementIds: [panel.statementId], slipKey })}
                   />
                 </aside>
               )}
@@ -577,23 +586,26 @@ export default function PayrollApp() {
       </div>
 
       <div className="desk-print">
-        {printJob && printStatement && printTax && (
-          <>
-            {printJob.what === 'statement' && <style>{'@page { size: A4 landscape; }'}</style>}
-            {printJob.what === 'tax' && <div className="print-page"><TaxDocument statement={printStatement} tax={printTax} /></div>}
-            {printJob.what === 'statement' && <div className="print-page"><StatementTable statement={printStatement} tax={printTax} /></div>}
-            {printJob.what === 'slip' && (() => {
-              const slips = printStatement.rows.map(buildSlip);
-              const slip = slips.find(item => item.key === printJob.slipKey) ?? slips[slips.length - 1];
-              return <div className="print-page"><SlipCard statement={printStatement} slip={slip} /></div>;
-            })()}
-            {printJob.what === 'slips' && printStatement.rows.map(row => (
-              <div key={`${row.sheetRow}-${row.label}`} className="print-page">
-                <SlipCard statement={printStatement} slip={buildSlip(row)} />
-              </div>
-            ))}
-          </>
-        )}
+        {printJob && printIds.map((id) => {
+          const statement = statements[id];
+          const tax = taxes[id];
+          const slips = statement.rows.map(buildSlip);
+          return (
+            <Fragment key={id}>
+              {printJob.what === 'statement' && <style>{'@page { size: A4 landscape; }'}</style>}
+              {printJob.what === 'tax' && <div className="print-page"><TaxDocument statement={statement} tax={tax} /></div>}
+              {printJob.what === 'statement' && <div className="print-page"><StatementTable statement={statement} tax={tax} /></div>}
+              {printJob.what === 'slip' && (
+                <div className="print-page"><SlipCard statement={statement} slip={slips.find(item => item.key === printJob.slipKey) ?? slips[slips.length - 1]} /></div>
+              )}
+              {printJob.what === 'slips' && slips.map(slip => (
+                <div key={slip.key} className="print-page">
+                  <SlipCard statement={statement} slip={slip} />
+                </div>
+              ))}
+            </Fragment>
+          );
+        })}
       </div>
     </>
   );

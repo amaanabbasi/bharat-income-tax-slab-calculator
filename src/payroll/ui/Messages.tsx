@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type ReactNode, useState } from 'react';
 import { balanceLabel, recoveryText } from './documents';
 import { Icon, type IconName } from './icons';
 import type { Action, Block, LoadedFile, Message } from './types';
@@ -99,22 +99,148 @@ function IssueItem({ issue }: { issue: Issue }) {
   );
 }
 
-function IssueList({ issues }: { issues: Issue[] }) {
+function Notes({ count, children }: { count: number, children: ReactNode }) {
+  return (
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-[13px] text-muted hover:text-ink">
+        <Icon name="chevronRight" className="size-3.5 transition-transform group-open:rotate-90" />
+        {`${count} ${count === 1 ? 'note' : 'notes'}`}
+      </summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  );
+}
+
+function FlatIssues({ issues }: { issues: Issue[] }) {
   const important = issues.filter(issue => issue.severity !== 'info');
   const notes = issues.filter(issue => issue.severity === 'info');
   return (
     <div className="mt-3 space-y-3">
-      {important.length > 0 && <ul className="space-y-2.5">{important.map(issue => <IssueItem key={`${issue.cell}-${issue.message}`} issue={issue} />)}</ul>}
+      {important.length > 0 && <ul className="space-y-2.5">{important.map((issue, index) => <IssueItem key={`${index}-${issue.message}`} issue={issue} />)}</ul>}
       {notes.length > 0 && (
-        <details className="group">
-          <summary className="flex cursor-pointer list-none items-center gap-1 text-[13px] text-muted hover:text-ink">
-            <Icon name="chevronRight" className="size-3.5 transition-transform group-open:rotate-90" />
-            {`${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`}
-          </summary>
-          <ul className="mt-2 space-y-2.5">{notes.map(issue => <IssueItem key={issue.message} issue={issue} />)}</ul>
-        </details>
+        <Notes count={notes.length}>
+          <ul className="space-y-2.5">{notes.map((issue, index) => <IssueItem key={`${index}-${issue.message}`} issue={issue} />)}</ul>
+        </Notes>
       )}
     </div>
+  );
+}
+
+/** The same message for many employees (cell references aside) is shown once. */
+const issueShape = (issue: Issue) => `${issue.severity}|${issue.message.replace(/\b[A-Z]{1,3}\d+\b/g, '#')}`;
+
+interface IssueGroups {
+  general: Issue[];
+  common: { issue: Issue, others: Issue[] }[];
+  byEmployee: { employee: string, issues: Issue[] }[];
+}
+
+function groupIssues(issues: Issue[]): IssueGroups {
+  const general = issues.filter(issue => !issue.employee);
+  const shapes = new Map<string, Issue[]>();
+  issues.filter(issue => issue.employee).forEach((issue) => {
+    const key = issueShape(issue);
+    shapes.set(key, [...(shapes.get(key) ?? []), issue]);
+  });
+  const common: IssueGroups['common'] = [];
+  const rest: Issue[] = [];
+  shapes.forEach((list) => {
+    if (new Set(list.map(issue => issue.employee)).size >= 3)
+      common.push({ issue: list[0], others: list.slice(1) });
+    else
+      rest.push(...list);
+  });
+  const byEmployee: IssueGroups['byEmployee'] = [];
+  issues.filter(issue => rest.includes(issue)).forEach((issue) => {
+    const group = byEmployee.find(item => item.employee === issue.employee);
+    if (group)
+      group.issues.push(issue);
+    else
+      byEmployee.push({ employee: issue.employee as string, issues: [issue] });
+  });
+  return { general, common, byEmployee };
+}
+
+function CommonIssue({ issue, others }: { issue: Issue, others: Issue[] }) {
+  const where = (item: Issue) => (item.cell ? `${item.employee} (${item.cell})` : item.employee);
+  return (
+    <div>
+      <IssueItem issue={issue} />
+      <details className="group/common ml-[26px] mt-1">
+        <summary className="flex cursor-pointer list-none items-center gap-1 text-[12.5px] text-muted hover:text-ink">
+          <Icon name="chevronRight" className="size-3 transition-transform group-open/common:rotate-90" />
+          {`For ${issue.employee}; the same in ${others.length} more ${others.length === 1 ? 'statement' : 'statements'}`}
+        </summary>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{others.map(where).join(', ')}</p>
+      </details>
+    </div>
+  );
+}
+
+function GroupedIssues({ groups }: { groups: IssueGroups }) {
+  return (
+    <div className="space-y-2.5">
+      {groups.general.length > 0 && <ul className="space-y-2.5">{groups.general.map((issue, index) => <IssueItem key={`${index}-${issue.message}`} issue={issue} />)}</ul>}
+      {groups.common.length > 0 && <ul className="space-y-2.5">{groups.common.map(item => <CommonIssue key={issueShape(item.issue)} {...item} />)}</ul>}
+      {groups.byEmployee.length > 0 && (
+        <ul className="divide-y divide-line/70 rounded-xl border border-line/70">
+          {groups.byEmployee.map(({ employee, issues }) => {
+            const errors = issues.filter(issue => issue.severity === 'error').length;
+            return (
+              <li key={employee}>
+                <details className="group/employee">
+                  <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-[13px] hover:bg-surface-2">
+                    <Icon name="chevronRight" className="size-3.5 shrink-0 text-muted transition-transform group-open/employee:rotate-90" />
+                    <span className="min-w-0 flex-1 truncate font-medium text-ink">{employee}</span>
+                    <span className={`shrink-0 text-[12px] ${errors ? 'text-bad' : 'text-muted'}`}>
+                      {errors ? `${errors} to fix` : `${issues.length} ${issues.length === 1 ? 'item' : 'items'}`}
+                    </span>
+                  </summary>
+                  <ul className="space-y-2.5 px-3 pb-3 pt-1">{issues.map((issue, index) => <IssueItem key={`${index}-${issue.message}`} issue={issue} />)}</ul>
+                </details>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function IssueList({ issues }: { issues: Issue[] }) {
+  if (!issues.some(issue => issue.employee))
+    return <FlatIssues issues={issues} />;
+  const important = groupIssues(issues.filter(issue => issue.severity !== 'info'));
+  const notes = issues.filter(issue => issue.severity === 'info');
+  return (
+    <div className="mt-3 space-y-3">
+      <GroupedIssues groups={important} />
+      {notes.length > 0 && (
+        <Notes count={notes.length}>
+          <GroupedIssues groups={groupIssues(notes)} />
+        </Notes>
+      )}
+    </div>
+  );
+}
+
+function StatementList({ statements }: { statements: SalaryStatement[] }) {
+  return (
+    <ul className="mt-3 max-h-80 divide-y divide-line/70 overflow-y-auto rounded-xl border border-line/70">
+      {statements.map((statement) => {
+        const months = statement.rows.filter(row => row.kind === 'month').length;
+        const arrears = statement.rows.length - months;
+        const gross = statement.rows.reduce((sum, row) => sum + row.values.gross, 0);
+        return (
+          <li key={statement.id} className="px-3 py-2.5 text-[13px]">
+            <p className="font-medium text-ink">{statement.employeeName}</p>
+            <p className="text-muted">
+              {[statement.designation, `FY ${statement.financialYear}`, `${months} months${arrears ? ` + ${arrears} arrear ${arrears === 1 ? 'row' : 'rows'}` : ''}`, `gross ${formatRupees(gross)}`].filter(Boolean).join(' · ')}
+            </p>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -122,9 +248,12 @@ function FileReport({ file, ctx }: { file: LoadedFile, ctx: DeskContext }) {
   const statements = file.statementIds.map(id => ctx.statements[id]).filter(Boolean);
   const errors = file.issues.filter(issue => issue.severity === 'error').length;
   const warnings = file.issues.filter(issue => issue.severity === 'warning').length;
+  const flagged = new Set(file.issues.filter(issue => issue.severity !== 'info' && issue.employee).map(issue => issue.employee)).size;
   const headline = !statements.length
     ? 'I couldn’t use this file yet. Here’s what to fix:'
-    : errors
+    : statements.length > 1 && file.issues.some(issue => issue.employee)
+      ? `Read ${statements.length} employees from it.${errors ? ' Some blocks need fixing first.' : flagged ? ` ${flagged === statements.length ? 'All of them have' : `${flagged} of them ${flagged === 1 ? 'has' : 'have'}`} something to check:` : ' Everything is in the expected format.'}`
+      : errors
       ? `Read ${statements.length} of the statements; ${errors === 1 ? 'one sheet needs' : 'some sheets need'} fixing first.`
       : warnings
         ? `Read it. ${warnings === 1 ? 'One thing' : `${warnings} things`} to check before relying on it:`
@@ -142,22 +271,15 @@ function FileReport({ file, ctx }: { file: LoadedFile, ctx: DeskContext }) {
           </p>
         </div>
       </div>
-      {statements.length > 0 && (
-        <ul className="mt-3 divide-y divide-line/70 rounded-xl border border-line/70">
-          {statements.map((statement) => {
-            const months = statement.rows.filter(row => row.kind === 'month').length;
-            const arrears = statement.rows.length - months;
-            const gross = statement.rows.reduce((sum, row) => sum + row.values.gross, 0);
-            return (
-              <li key={statement.id} className="px-3 py-2.5 text-[13px]">
-                <p className="font-medium text-ink">{statement.employeeName}</p>
-                <p className="text-muted">
-                  {[statement.designation, `FY ${statement.financialYear}`, `${months} months${arrears ? ` + ${arrears} arrear ${arrears === 1 ? 'row' : 'rows'}` : ''}`, `gross ${formatRupees(gross)}`].filter(Boolean).join(' · ')}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+      {statements.length > 0 && statements.length <= 4 && <StatementList statements={statements} />}
+      {statements.length > 4 && (
+        <details className="group mt-3">
+          <summary className="flex cursor-pointer list-none items-center gap-1 text-[13px] text-muted hover:text-ink">
+            <Icon name="chevronRight" className="size-3.5 transition-transform group-open:rotate-90" />
+            {`The ${statements.length} statements read`}
+          </summary>
+          <StatementList statements={statements} />
+        </details>
       )}
       <p className="mt-3 text-[14px] text-ink">{headline}</p>
       <IssueList issues={file.issues} />
@@ -213,7 +335,7 @@ function TaxSummary({ id, ctx, compare }: { id: string, ctx: DeskContext, compar
         actions={[
           compare ? { kind: 'open', view: 'compare', statementId: id, label: 'Compare regimes' } : { kind: 'open', view: 'tax', statementId: id, label: 'Open full computation' },
           { kind: 'export', statementIds: [id], label: 'Download Excel' },
-          { kind: 'print', what: 'tax', statementId: id, label: 'Print' },
+          { kind: 'print', what: 'tax', statementIds: [id], label: 'Print' },
         ]}
       />
     </div>
@@ -252,41 +374,88 @@ function SlipsSummary({ id, ctx }: { id: string, ctx: DeskContext }) {
           </button>
         ))}
       </div>
-      <ActionButtons run={ctx.run} actions={[{ kind: 'print', what: 'slips', statementId: id, label: 'Print all slips' }]} />
+      <ActionButtons run={ctx.run} actions={[{ kind: 'print', what: 'slips', statementIds: [id], label: 'Print all slips' }]} />
     </div>
   );
 }
 
 function Employees({ ids, ctx }: { ids: string[], ctx: DeskContext }) {
+  const [query, setQuery] = useState('');
   const rows = ids.filter(id => ctx.statements[id] && ctx.taxes[id]);
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = words.length
+    ? rows.filter(id => words.every(word => `${ctx.statements[id].employeeName} ${ctx.statements[id].designation}`.toLowerCase().includes(word)))
+    : rows;
+  const sum = (pick: (tax: StatementTax) => number) => rows.reduce((total, id) => total + pick(ctx.taxes[id]), 0);
+  const signed = (amount: number) => (amount >= 0 ? formatRupees(amount) : `−${formatRupees(-amount)}`);
+  const cell = 'px-2 py-2 text-right';
   return (
     <div className="rounded-2xl border border-line bg-surface p-2 sm:p-3">
-      <table className="w-full text-[13px]">
-        <thead>
-          <tr className="text-left text-[12px] text-muted">
-            <th className="px-2 py-1.5 font-medium">Employee</th>
-            <th className="px-2 py-1.5 text-right font-medium">Tax payable</th>
-            <th className="px-2 py-1.5 text-right font-medium">Balance</th>
-          </tr>
-        </thead>
-        <tbody className="tabular">
-          {rows.map((id) => {
-            const c = ctx.taxes[id].chosen;
-            return (
-              <tr key={id} className="cursor-pointer border-t border-line/70 hover:bg-surface-2" onClick={() => ctx.run({ kind: 'open', view: 'tax', statementId: id, label: '' })}>
-                <td className="px-2 py-2 font-body">
-                  <span className="font-medium text-ink">{ctx.statements[id].employeeName}</span>
-                  <span className="block text-[12px] text-muted">{ctx.statements[id].designation}</span>
-                </td>
-                <td className="px-2 py-2 text-right">{formatRupees(c.taxPayable)}</td>
-                <td className={`px-2 py-2 text-right ${c.balance > 0 ? 'text-accent-text' : 'text-muted'}`}>{c.balance >= 0 ? formatRupees(c.balance) : `−${formatRupees(-c.balance)}`}</td>
+      {rows.length > 8 && (
+        <div className="px-1 pb-2">
+          <input
+            type="search"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder={`Find among ${rows.length} employees`}
+            aria-label="Find an employee"
+            className="w-full rounded-lg border border-line bg-bg px-3 py-1.5 text-[13px] text-ink placeholder:text-muted focus:border-muted/50 focus:outline-none"
+          />
+        </div>
+      )}
+      <div className={rows.length > 12 ? 'max-h-[480px] overflow-y-auto' : ''}>
+        <table className="w-full text-[13px]">
+          <thead className="sticky top-0 bg-surface">
+            <tr className="text-left text-[12px] text-muted">
+              <th className="px-2 py-1.5 font-medium">Employee</th>
+              <th className="hidden px-2 py-1.5 text-right font-medium sm:table-cell">Gross salary</th>
+              <th className="hidden px-2 py-1.5 text-right font-medium sm:table-cell">Deducted</th>
+              <th className="px-2 py-1.5 text-right font-medium">Tax payable</th>
+              <th className="px-2 py-1.5 text-right font-medium">Balance</th>
+            </tr>
+          </thead>
+          <tbody className="tabular">
+            {shown.map((id) => {
+              const c = ctx.taxes[id].chosen;
+              return (
+                <tr key={id} className="cursor-pointer border-t border-line/70 hover:bg-surface-2" onClick={() => ctx.run({ kind: 'open', view: 'tax', statementId: id, label: '' })}>
+                  <td className="px-2 py-2 font-body">
+                    <span className="font-medium text-ink">{ctx.statements[id].employeeName}</span>
+                    <span className="block text-[12px] text-muted">{[ctx.statements[id].designation, c.regime === 'old' ? 'old regime' : ''].filter(Boolean).join(' · ')}</span>
+                  </td>
+                  <td className={`${cell} hidden text-muted sm:table-cell`}>{formatRupees(ctx.taxes[id].annual.totals.gross)}</td>
+                  <td className={`${cell} hidden text-muted sm:table-cell`}>{formatRupees(c.tdsDeducted + c.previousEmployerTds)}</td>
+                  <td className={cell}>{formatRupees(c.taxPayable)}</td>
+                  <td className={`${cell} ${c.balance > 0 ? 'text-accent-text' : 'text-muted'}`}>{signed(c.balance)}</td>
+                </tr>
+              );
+            })}
+            {!shown.length && (
+              <tr className="border-t border-line/70"><td colSpan={5} className="px-2 py-3 font-body text-muted">{`No employee matches “${query}”.`}</td></tr>
+            )}
+          </tbody>
+          {rows.length > 1 && !words.length && (
+            <tfoot className="tabular sticky bottom-0 bg-surface">
+              <tr className="border-t border-line font-semibold text-ink">
+                <td className="px-2 py-2 font-body">{`Total, ${rows.length} employees`}</td>
+                <td className={`${cell} hidden sm:table-cell`}>{formatRupees(sum(tax => tax.annual.totals.gross))}</td>
+                <td className={`${cell} hidden sm:table-cell`}>{formatRupees(sum(tax => tax.chosen.tdsDeducted + tax.chosen.previousEmployerTds))}</td>
+                <td className={cell}>{formatRupees(sum(tax => tax.chosen.taxPayable))}</td>
+                <td className={cell}>{signed(sum(tax => tax.chosen.balance))}</td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </tfoot>
+          )}
+        </table>
+      </div>
       <div className="px-2 pb-1">
-        <ActionButtons run={ctx.run} actions={[{ kind: 'export', statementIds: rows, label: 'Download all as Excel' }]} />
+        <ActionButtons
+          run={ctx.run}
+          actions={[
+            { kind: 'export', statementIds: rows, label: 'Download all as Excel' },
+            { kind: 'print', what: 'tax', statementIds: rows, label: 'Print all tax computations' },
+            { kind: 'print', what: 'slips', statementIds: rows, label: 'Print all pay slips' },
+          ]}
+        />
       </div>
     </div>
   );
@@ -295,11 +464,12 @@ function Employees({ ids, ctx }: { ids: string[], ctx: DeskContext }) {
 function FormatGuide({ run }: { run: (action: Action) => void }) {
   return (
     <div>
-      <p>Each sheet is one employee’s salary for one year, laid out like the office statement:</p>
+      <p>Each employee’s salary for one year is laid out like the office statement. A sheet can hold one employee, or many one below the other (each block with its own name and headings); a workbook can also have one sheet per employee. Each block looks like this:</p>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-[15px]">
         <li>Office name at the top, then the title with the year: “Statement of Salary for the year 2025-26”.</li>
         <li>“Name of employee: …” and “Designation: …” above the table.</li>
         <li>A row of headings, then one row per month (March to February), then arrear rows such as “DA ARR”, then TOTAL.</li>
+        <li>Columns such as UA, WA, GPF, LIC, H.B.A and recovery of pay are read too when a statement has them.</li>
       </ul>
       <div className="mt-3 overflow-hidden rounded-xl border border-line bg-surface font-body">
         <table className="w-full text-[12.5px]">
@@ -362,7 +532,7 @@ function RulesExplainer({ fy }: { fy: FinancialYear }) {
   );
 }
 
-const HELP_EXAMPLES = ['Income tax', 'Pay slip for August', 'Compare old and new regime', 'Edit declarations', 'Show the statement', 'Download Excel', 'What format do I need?', 'Download the template'];
+const HELP_EXAMPLES = ['Income tax', 'Pay slip for August', 'Compare old and new regime', 'Edit declarations', 'Show the statement', 'Download Excel', 'Show all employees', 'Print all tax computations', 'What format do I need?', 'Download the template'];
 
 function Help({ run }: { run: (action: Action) => void }) {
   return (

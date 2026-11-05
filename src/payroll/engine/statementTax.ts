@@ -31,6 +31,8 @@ export function salaryFigures(annual: AnnualSalary): SalaryFigures {
     employeeNps: t.npsEmployee,
     cghs: t.cghs,
     gis: t.gis,
+    gpf: t.gpf,
+    lic: t.lic,
   };
 }
 
@@ -55,10 +57,24 @@ export function computeStatementTax(statement: SalaryStatement, declarations: De
     notes.push(`No salary yet for ${listMonths(annual.projectedMonths)}, so those months repeat the latest month's pay as an estimate.`);
   if (annual.missingMonths.length)
     notes.push(`${listMonths(annual.missingMonths)} ${annual.missingMonths.length === 1 ? 'is' : 'are'} missing from the statement and not projected; the tax covers the months present only.`);
-  if (annual.arrears.length) {
-    const total = annual.arrears.reduce((sum, arrear) => sum + arrear.amount, 0);
-    notes.push(`Arrears of ${formatRupees(total)} (${annual.arrears.map(arrear => arrear.label).join(', ')}) are taxed this year. If part of them belongs to an earlier year, relief u/s 89 (Form 10E) can lower the tax; enter it in Declarations.`);
-  }
+  // Rows other than months: true arrears, leave encashment, and other payments (CEA, dress allowance…).
+  const extra = annual.arrears.filter(arrear => arrear.amount !== 0);
+  const kinds = {
+    leave: extra.filter(arrear => /enc/i.test(arrear.label)),
+    arrears: extra.filter(arrear => !/enc/i.test(arrear.label) && /arr|in-?situ/i.test(arrear.label)),
+    other: extra.filter(arrear => !/enc/i.test(arrear.label) && !/arr|in-?situ/i.test(arrear.label)),
+  };
+  const describe = (rows: typeof extra) => `${formatRupees(rows.reduce((sum, row) => sum + row.amount, 0))} (${rows.map(row => row.label).join(', ')})`;
+  if (kinds.arrears.length)
+    notes.push(`Arrears of ${describe(kinds.arrears)} are taxed this year. If part of them belongs to an earlier year, relief u/s 89 (Form 10E) can lower the tax; enter it in Declarations.`);
+  if (kinds.leave.length)
+    notes.push(`Leave encashment of ${describe(kinds.leave)} is taxed as salary: it is exempt only when paid on retirement (s.10(10AA)).`);
+  if (kinds.other.length)
+    notes.push(`Other payments of ${describe(kinds.other)} are taxed as salary.`);
+  if (annual.totals.recovery)
+    notes.push(`Pay recovered (${formatRupees(annual.totals.recovery)}) is shown as a deduction but not taken off taxable salary. If it recovers pay overpaid this year, reduce the pay rows instead.`);
+  if (annual.totals.hba && declarations.regime === 'old')
+    notes.push('The principal part of the house building advance repaid can count under 80C; add it in Declarations.');
 
   const recovery = chosen.balance > 0 && annual.pendingTaxMonths.length
     ? { perMonth: Math.ceil(chosen.balance / annual.pendingTaxMonths.length), months: annual.pendingTaxMonths }

@@ -16,6 +16,8 @@ export type Intent =
   | { kind: 'statement', employeeId?: string }
   | { kind: 'export', employeeId?: string }
   | { kind: 'employee', employeeId: string }
+  /** Every loaded employee at once: the summary table, or printing all of them. */
+  | { kind: 'everyone', print?: 'tax' | 'slips' }
   | { kind: 'unknown' };
 
 const TITLES = new Set(['dr', 'mr', 'mrs', 'ms', 'miss', 'shri', 'smt', 'sri', 'prof']);
@@ -59,6 +61,11 @@ export function parseIntent(input: string, employees: { id: string, name: string
     return { kind: 'format' };
   if (has(/\bhow\b.*\b(tax|calculated|worked out|computed)\b/) || has(/\b(rules|slab rates|explain|tax slabs?)\b/))
     return { kind: 'rules' };
+  const everyone = !employeeId && has(/\b(all|every|each)\s+(the\s+)?(employees?|staff|people|persons?|statements?)\b|\beveryone\b|\b(employee list|list of employees|summary)\b/);
+  if (has(/\bprint\b/) && (everyone || (!employeeId && has(/\b(all|every|each)\b/) && has(/\b(computations?|tax)\b/))))
+    return { kind: 'everyone', print: has(/\b(slips?|payslips?)\b/) ? 'slips' : 'tax' };
+  if (everyone && !has(/\b(export|download|excel|xlsx|save)\b/))
+    return { kind: 'everyone' };
   if (has(/\b(compare|comparison|which regime|old (vs|or|and) new|new (vs|or|and) old|better regime)\b/))
     return { kind: 'compare', employeeId };
   if (has(/\b(declar\w*|deductions?|rent|80c|80d|80ccd|hra exemption|investments?|other income|previous employer|relief|settings?)\b/))

@@ -32,8 +32,7 @@ export async function importFile(fileName: string, buffer: ArrayBuffer, fileId: 
       statementLike += 1;
     else if (grid.rows.some(row => row.some(cell => cell.value !== null)))
       result.skippedSheets.push(grid.name);
-    if (parsed.statement)
-      result.statements.push(parsed.statement);
+    result.statements.push(...parsed.statements);
   });
 
   if (!statementLike) {

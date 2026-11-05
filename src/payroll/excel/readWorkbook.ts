@@ -3,7 +3,8 @@ import { type CellValue, type GridCell, type SheetGrid } from './grid';
 import { type Issue } from '../model';
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_ROWS = 400;
+// A whole office in one sheet runs to a few thousand rows.
+const MAX_ROWS = 8000;
 const MAX_COLUMNS = 60;
 
 /** ExcelJS is large, so it is only fetched when a file is read or written. */

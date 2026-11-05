@@ -5,6 +5,7 @@ import {
   NPA_CEILING,
   PAY_KEYS,
   type PayKey,
+  TEMPLATE_KEYS,
   TOTAL_LABELS,
   columnSpec,
 } from '../format/salaryStatement';
@@ -81,23 +82,29 @@ interface HeaderCell extends ColumnGuess {
   text: string;
 }
 
-function findHeaderRow(grid: SheetGrid): { row: number, cells: HeaderCell[] } | null {
-  let best: { row: number, cells: HeaderCell[], distinct: number } | null = null;
-  for (let row = 0; row < Math.min(grid.rows.length, 60); row++) {
-    const cells: HeaderCell[] = [];
-    grid.rows[row].forEach((cell, col) => {
+interface HeaderRow {
+  row: number;
+  cells: HeaderCell[];
+}
+
+/** Every row that reads like the statement's headings; a sheet can hold one block per employee. */
+function findHeaderRows(grid: SheetGrid): HeaderRow[] {
+  const found: HeaderRow[] = [];
+  grid.rows.forEach((cells, row) => {
+    const guesses: HeaderCell[] = [];
+    cells.forEach((cell, col) => {
       const text = typeof cell.value === 'string' ? cellText(cell) : '';
       if (!text || text.length > 60)
         return;
       const guess = guessColumn(text);
       if (guess)
-        cells.push({ ...guess, col, text });
+        guesses.push({ ...guess, col, text });
     });
-    const keys = new Set(cells.map(cell => cell.key));
-    if (keys.size >= 4 && (keys.has('month') || keys.has('basic')) && (!best || keys.size > best.distinct))
-      best = { row, cells, distinct: keys.size };
-  }
-  return best;
+    const keys = new Set(guesses.map(cell => cell.key));
+    if (keys.size >= 4 && (keys.has('month') || keys.has('basic')))
+      found.push({ row, cells: guesses });
+  });
+  return found;
 }
 
 interface NumberRead {
@@ -188,78 +195,52 @@ function list(refs: string[], max = 4): string {
 export interface StatementParse {
   /** False when the sheet has no salary-statement headings at all (e.g. a notes sheet). */
   looksLikeStatement: boolean;
-  /** Null when there are errors that must be fixed first. */
-  statement: SalaryStatement | null;
+  /** One per employee block that could be read; blocks with errors are left out. */
+  statements: SalaryStatement[];
   issues: Issue[];
 }
 
-export function parseStatementSheet(grid: SheetGrid, options: { id: string, fileName: string, today?: Date }): StatementParse {
+interface ParseOptions {
+  id: string;
+  fileName: string;
+  today?: Date;
+}
+
+/**
+ * Reads a sheet holding one statement, or several stacked one below another (a whole office
+ * in one sheet). Each block runs from the end of the previous one to its own TOTAL and signatures.
+ */
+export function parseStatementSheet(grid: SheetGrid, options: ParseOptions): StatementParse {
+  const headers = findHeaderRows(grid);
+  if (!headers.length)
+    return { looksLikeStatement: false, statements: [], issues: [] };
+  const statements: SalaryStatement[] = [];
+  const issues: Issue[] = [];
+  let top = 0;
+  headers.forEach((header, index) => {
+    const bottom = index + 1 < headers.length ? headers[index + 1].row : grid.rows.length;
+    const block = parseBlock(grid, header, top, bottom, {
+      ...options,
+      id: headers.length > 1 ? `${options.id}:${index}` : options.id,
+      several: headers.length > 1,
+    });
+    issues.push(...block.issues);
+    if (block.statement)
+      statements.push(block.statement);
+    top = block.endRow + 1;
+  });
+  return { looksLikeStatement: true, statements, issues };
+}
+
+function parseBlock(grid: SheetGrid, header: HeaderRow, top: number, bottom: number, options: ParseOptions & { several: boolean }): { statement: SalaryStatement | null, issues: Issue[], endRow: number } {
   const issues: Issue[] = [];
   const add = (severity: Severity, message: string, fix?: string, cell?: string) =>
     issues.push({ severity, message, fix, sheet: grid.name, cell });
-
-  const header = findHeaderRow(grid);
-  if (!header)
-    return { looksLikeStatement: false, statement: null, issues };
   const headerRowNumber = header.row + 1;
 
-  // Columns
-  const columnOf = new Map<ColumnKey, number>();
-  for (const spec of COLUMNS) {
-    const candidates = header.cells
-      .filter(cell => cell.key === spec.key)
-      .sort((a, b) => Number(b.exact) - Number(a.exact) || a.distance - b.distance || a.col - b.col);
-    if (!candidates.length)
-      continue;
-    const [chosen, ...extra] = candidates;
-    columnOf.set(spec.key, chosen.col);
-    if (!chosen.exact) {
-      add('warning', `Heading “${chosen.text}” in ${cellRef(header.row, chosen.col)} looks like a misspelling of “${spec.header}”, so it was read as ${spec.label}.`,
-        `Change the heading to “${spec.header}” so there’s no doubt.`, cellRef(header.row, chosen.col));
-    }
-    for (const other of extra) {
-      add('warning', `“${other.text}” in ${cellRef(header.row, other.col)} is a second ${spec.header} column, so it was ignored.`,
-        `Keep one “${spec.header}” column, or rename the other one.`, cellRef(header.row, other.col));
-    }
-  }
-  const usedColumns = new Set(columnOf.values());
-  grid.rows[header.row].forEach((cell, col) => {
-    const text = cellText(cell);
-    if (!text || usedColumns.has(col) || header.cells.some(guess => guess.col === col))
-      return;
-    if (/nps/i.test(text)) {
-      add('warning', `Column “${text}” (${cellRef(header.row, col)}) doesn’t say whose NPS share it is, so it was skipped.`,
-        'Head the employee share “NPS(10%)” and the Government share “NPS(14%)”.', cellRef(header.row, col));
-      return;
-    }
-    add('warning', `Column “${text}” (${cellRef(header.row, col)}) isn’t part of the salary statement format, so it was skipped.`,
-      'If it is taxable pay, move the amounts into “Others”. Deductions other than I.T., CGHS, GIS and NPS can be left out.', cellRef(header.row, col));
-  });
-
-  const missingRequired = COLUMNS.filter(spec => spec.required && !columnOf.has(spec.key));
-  for (const spec of missingRequired) {
-    add('error', `Column “${spec.header}” (${spec.label}) is missing from the headings in row ${headerRowNumber}.`,
-      `Add a column headed “${spec.header}” in row ${headerRowNumber}. ${spec.description}`);
-  }
-  const quietlyZero: string[] = [];
-  for (const spec of COLUMNS) {
-    if (spec.required || columnOf.has(spec.key))
-      continue;
-    if (spec.key === 'gross')
-      add('info', 'There’s no “GROSS PAY” column, so gross pay was added up from the pay columns.');
-    else if (['incomeTax', 'npsGovt', 'npsEmployee', 'hra'].includes(spec.key))
-      add('warning', `Column “${spec.header}” (${spec.label}) wasn’t found, so it counts as zero.`, `If it’s there under another heading, rename that heading to “${spec.header}”.`);
-    else
-      quietlyZero.push(spec.header);
-  }
-  if (quietlyZero.length)
-    add('info', `Optional columns not in this sheet, counted as zero: ${quietlyZero.join(', ')}.`);
-  if (missingRequired.length)
-    return { looksLikeStatement: true, statement: null, issues };
-
-  // Details above the table
+  // Details above the table, within this block only
   const textAbove: { text: string, row: number, col: number }[] = [];
-  for (let row = 0; row < header.row; row++) {
+  for (let row = top; row < header.row; row++) {
     grid.rows[row].forEach((cell, col) => {
       const text = typeof cell.value === 'string' ? cellText(cell) : '';
       if (text)
@@ -286,6 +267,77 @@ export function parseStatementSheet(grid: SheetGrid, options: { id: string, file
   const titleItem = textAbove.find(item => /statement\s+of\s+(?:salary|pay)|salary\s+statement|for\s+the\s+(?:financial\s+)?year/i.test(item.text));
   const organisationItem = textAbove.find(item => item !== titleItem && item !== name?.item && item !== designation?.item
     && item.row < (titleItem?.row ?? name?.item.row ?? header.row) && !/^(?:name|designation)/i.test(item.text));
+  const employeeName = name?.value ?? (options.several ? `${grid.name}, row ${headerRowNumber}` : grid.name);
+  const finish = (statement: SalaryStatement | null, endRow: number) => {
+    if (options.several) {
+      for (const issue of issues)
+        issue.employee = employeeName;
+    }
+    return { statement, issues, endRow };
+  };
+
+  // Columns
+  const columnOf = new Map<ColumnKey, number>();
+  for (const spec of COLUMNS) {
+    const candidates = header.cells
+      .filter(cell => cell.key === spec.key)
+      .sort((a, b) => Number(b.exact) - Number(a.exact) || a.distance - b.distance || a.col - b.col);
+    if (!candidates.length)
+      continue;
+    const [chosen, ...extra] = candidates;
+    columnOf.set(spec.key, chosen.col);
+    if (!chosen.exact) {
+      add('warning', `Heading “${chosen.text}” in ${cellRef(header.row, chosen.col)} looks like a misspelling of “${spec.header}”, so it was read as ${spec.label}.`,
+        `Change the heading to “${spec.header}” so there’s no doubt.`, cellRef(header.row, chosen.col));
+    }
+    for (const other of extra) {
+      add('warning', `“${other.text}” in ${cellRef(header.row, other.col)} is a second ${spec.header} column, so it was ignored.`,
+        `Keep one “${spec.header}” column, or rename the other one.`, cellRef(header.row, other.col));
+    }
+  }
+  const usedColumns = new Set(columnOf.values());
+  grid.rows[header.row].forEach((cell, col) => {
+    const text = cellText(cell);
+    if (!text || usedColumns.has(col) || header.cells.some(guess => guess.col === col))
+      return;
+    if (normalise(text) === 'nps' && columnOf.has('npsGovt') && !columnOf.has('npsEmployee')) {
+      columnOf.set('npsEmployee', col);
+      add('info', `“${text}” in ${cellRef(header.row, col)} was read as the employee’s NPS share (10%), since the Government’s 14% has its own column.`);
+      return;
+    }
+    if (/nps/i.test(text)) {
+      add('warning', `Column “${text}” (${cellRef(header.row, col)}) doesn’t say whose NPS share it is, so it was skipped.`,
+        'Head the employee share “NPS(10%)” and the Government share “NPS(14%)”.', cellRef(header.row, col));
+      return;
+    }
+    add('warning', `Column “${text}” (${cellRef(header.row, col)}) isn’t part of the salary statement format, so it was skipped.`,
+      'If it is taxable pay, move the amounts into “Others”. Deductions other than I.T., CGHS, GIS and NPS can be left out.', cellRef(header.row, col));
+  });
+
+  const missingRequired = COLUMNS.filter(spec => spec.required && !columnOf.has(spec.key));
+  for (const spec of missingRequired) {
+    add('error', `Column “${spec.header}” (${spec.label}) is missing from the headings in row ${headerRowNumber}.`,
+      `Add a column headed “${spec.header}” in row ${headerRowNumber}. ${spec.description}`);
+  }
+  const quietlyZero: string[] = [];
+  // GPF members are on the old pension scheme, so no NPS columns is expected.
+  const onGpf = columnOf.has('gpf');
+  for (const spec of COLUMNS) {
+    if (spec.required || columnOf.has(spec.key) || !TEMPLATE_KEYS.includes(spec.key))
+      continue;
+    if (onGpf && (spec.key === 'npsEmployee' || spec.key === 'npsGovt'))
+      continue;
+    if (spec.key === 'gross')
+      add('info', 'There’s no “GROSS PAY” column, so gross pay was added up from the pay columns.');
+    else if (['incomeTax', 'npsGovt', 'npsEmployee', 'hra'].includes(spec.key))
+      add('warning', `Column “${spec.header}” (${spec.label}) wasn’t found, so it counts as zero.`, `If it’s there under another heading, rename that heading to “${spec.header}”.`);
+    else
+      quietlyZero.push(spec.header);
+  }
+  if (quietlyZero.length)
+    add('info', `Optional columns not in this sheet, counted as zero: ${quietlyZero.join(', ')}.`);
+  if (missingRequired.length)
+    return finish(null, header.row);
 
   let startYear: number | null = null;
   const yearMatch = titleItem?.text.match(/(20\d{2})\s*[-–/]\s*(\d{2}|20\d{2})/);
@@ -301,7 +353,8 @@ export function parseStatementSheet(grid: SheetGrid, options: { id: string, file
   const blankGrossRows: string[] = [];
   let totalRow = -1;
   let blankRun = 0;
-  for (let row = header.row + 1; row < Math.min(grid.rows.length, header.row + 200); row++) {
+  let lastRow = header.row;
+  for (let row = header.row + 1; row < Math.min(bottom, header.row + 200); row++) {
     const cells = grid.rows[row] ?? [];
     if (isTotalRow(cells, monthCol)) {
       totalRow = row;
@@ -326,9 +379,13 @@ export function parseStatementSheet(grid: SheetGrid, options: { id: string, file
         break;
       continue;
     }
-    blankRun = 0;
-    const month = parseMonth(cells[monthCol]?.value ?? null);
     const hasProblems = Array.from(reads.values()).some(read => read.problem);
+    // An unlabelled row of zeros (often left-over formulas) adds nothing.
+    if (!label && !hasProblems && Array.from(reads.values()).every(read => read.blank || read.value === 0))
+      continue;
+    blankRun = 0;
+    lastRow = row;
+    const month = parseMonth(cells[monthCol]?.value ?? null);
     // A label with nothing beside it (a note, an empty arrear line) adds nothing.
     if (!month && !hasNumbers && !hasProblems)
       continue;
@@ -373,7 +430,7 @@ export function parseStatementSheet(grid: SheetGrid, options: { id: string, file
   const monthRows = rows.filter(row => row.kind === 'month');
   if (!monthRows.length) {
     add('error', `No month rows were found under the headings in row ${headerRowNumber}.`, 'Put one row per month below the headings (Mar-25, Apr-25, …), with the month as a date or text like “Mar 2025”.');
-    return { looksLikeStatement: true, statement: null, issues };
+    return finish(null, Math.max(lastRow, totalRow));
   }
 
   // Which pay year: from the title, else from the first month.
@@ -476,23 +533,28 @@ export function parseStatementSheet(grid: SheetGrid, options: { id: string, file
   if (pending.length && columnOf.has('incomeTax'))
     add('info', `I.T. Ded. is blank for ${list(pending.map(row => row.label), 6)}, so no tax counts as deducted in ${pending.length === 1 ? 'that month' : 'those months'} yet.`);
 
-  if (issues.some(issue => issue.severity === 'error'))
-    return { looksLikeStatement: true, statement: null, issues };
-
-  if (!name)
-    add('warning', `“Name of employee:” wasn’t found above the table, so the sheet name “${grid.name}” is used as the name.`, 'Write “Name of employee:  <name>” above the headings (cell A7 in the template).');
-
-  // Signatures below the table
+  // Signatures below the table, stopping where the next employee's block begins.
   const signatures: string[] = [];
+  let endRow = Math.max(lastRow, totalRow);
   if (totalRow >= 0) {
-    for (let row = totalRow + 1; row < Math.min(grid.rows.length, totalRow + 10); row++) {
+    scan: for (let row = totalRow + 1; row < Math.min(bottom, totalRow + 10); row++) {
       for (const cell of grid.rows[row]) {
         const text = typeof cell.value === 'string' ? cellText(cell) : '';
-        if (text && !/^[\d,.\s₹-]+$/.test(text))
+        if (/statement\s+of|name\s*of\s*(?:the\s*)?employee|designation/i.test(text))
+          break scan;
+        if (text && !/^[\d,.\s₹-]+$/.test(text)) {
           signatures.push(text);
+          endRow = row;
+        }
       }
     }
   }
+
+  if (issues.some(issue => issue.severity === 'error'))
+    return finish(null, endRow);
+
+  if (!name)
+    add('warning', `“Name of employee:” wasn’t found above the table, so “${employeeName}” is used as the name.`, 'Write “Name of employee:  <name>” above the headings (cell A7 in the template).');
 
   const statement: SalaryStatement = {
     id: options.id,
@@ -501,12 +563,13 @@ export function parseStatementSheet(grid: SheetGrid, options: { id: string, file
     organisation: organisationItem?.text ?? '',
     title: titleItem?.text ?? `Statement of Salary for the year ${financialYear}`,
     financialYear,
-    employeeName: name?.value ?? grid.name,
+    employeeName,
     designation: designation?.value ?? '',
     rows: rows.map(({ typedYear: _typedYear, cell: _cell, ...row }) => row),
+    headerRow: headerRowNumber,
     columns: Array.from(columnOf.keys()),
     signatures,
     startMonth,
   };
-  return { looksLikeStatement: true, statement, issues };
+  return finish(statement, endRow);
 }
